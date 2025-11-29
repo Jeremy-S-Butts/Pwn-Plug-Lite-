@@ -1,0 +1,15 @@
+import winreg
+
+def check_userinit_mpr_logon_script():
+    try:
+        reg_path = r"Environment"
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_READ)
+        value, regtype = winreg.QueryValueEx(key, "UserInitMprLogonScript")
+        print(f"[!] Persistence found: UserInitMprLogonScript = {value}")
+    except FileNotFoundError:
+        print("[+] No persistence registry entry found.")
+    except Exception as e:
+        print(f"[!] Error: {e}")
+
+if __name__ == "__main__":
+    check_userinit_mpr_logon_script()
