@@ -1,44 +1,36 @@
-Python 2.7 (r27:82525, Jul  4 2010, 09:01:59) [MSC v.1500 32 bit (Intel)] on win32
-Type "copyright", "credits" or "license()" for more information.
->>> import os
+import os
 import shutil
 import tkinter as tk
 from tkinter import filedialog, messagebox
-import PyInstaller.__main__
-import winreg
+import subprocess
+import winreg  # Windows-only
 
 class PersistenceGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Windows Registry Persistence Tester")
+        self.root.title("Registry Persistence GUI Tool")
         self.root.geometry("600x300")
-
         self.filename = ""
         self.exe_name = "Dwm"
 
         self.create_widgets()
 
     def create_widgets(self):
-        # File selection
         self.file_label = tk.Label(self.root, text="Selected Python File: None")
         self.file_label.pack(pady=10)
 
         self.select_button = tk.Button(self.root, text="Select Python File", command=self.select_file)
         self.select_button.pack()
 
-        # Build EXE
         self.build_button = tk.Button(self.root, text="Build Executable", command=self.build_exe)
         self.build_button.pack(pady=5)
 
-        # Set Persistence
         self.persist_button = tk.Button(self.root, text="Set Registry Persistence", command=self.set_persistence)
         self.persist_button.pack(pady=5)
 
-        # Verify
         self.verify_button = tk.Button(self.root, text="Verify Persistence", command=self.verify_persistence)
         self.verify_button.pack(pady=5)
 
-        # Cleanup
         self.remove_button = tk.Button(self.root, text="Remove Persistence", command=self.remove_persistence)
         self.remove_button.pack(pady=5)
 
@@ -52,14 +44,11 @@ class PersistenceGUI:
             return
 
         try:
-            PyInstaller.__main__.run([
-                '--onefile',
-                '--noconsole',
-                f'--name={self.exe_name}',
-                self.filename
-            ])
+            subprocess.run([
+                "pyinstaller", "--onefile", "--noconsole", f"--name={self.exe_name}", self.filename
+            ], check=True)
 
-            exe_path = os.path.join('dist', self.exe_name + ".exe")
+            exe_path = os.path.join("dist", self.exe_name + ".exe")
             if os.path.exists(exe_path):
                 shutil.move(exe_path, os.getcwd())
                 messagebox.showinfo("Success", f"Executable created: {self.exe_name}.exe")
