@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+"""
+PwnPlug Lite Module: (Windows)
+
+Purpose:
+    - Monitor common Windows autorun registry keys for suspicious changes.
+    - Detect when entries that look like AV / security tools are added,
+      removed, or modified (possible defense evasion).
+    - Designed for blue-team / educational use only.
+
+Usage:
+    - First run: creates a baseline of autorun values.
+    - Subsequent runs: compares current values to baseline and reports changes.
+
+Tested on:
+    - Windows 10 / 11 with Python 3.x
+
+Author: CyberGeekJSB + ChatGPT (defensive rewrite)
+"""
+
+import os
+import json
+import logging
+from datetime import datetime
+
+try:
+    import winreg  # type: ignore[attr-defined]
+except ImportError:
+    raise SystemExit("winreg module not available. This module must run on Windows.")
+
+# --------------------------- CONFIG ---------------------------------- #
+
+MODULE_NAME = "AV Tamper Detector"
+MODULE_CATEGORY = "Defensive / Monitoring"
+MODULE_VERSION = "1.0"
+
+# Common autorun keys used by malware, tools, and AV products
+AUTORUN_KEYS = [
+    (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run"),
+    (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\RunOnce"),
+    (winreg.HKEY_CURRENT_USER,  r"Software\Microsoft\Windows\CurrentVersion\Run"),
+    (winreg.HKEY_CURRENT_USER,  r"Software\Microsoft\Windows\CurrentVersion\RunOnce"),
+]
+
+# Heuristic keywords for AV / security tools
+AV_KEYWORDS = [
+    "av", "defender", "security", "avast", "avg", "bitdefender",
+    "kaspersky", "sophos", "mcafee", "carbonblack", "crowdstrike",
+    "sentinelone", "eset", "symantec", "norton", "endpoint", "antivirus"
+]
+
+# Where we store baseline + logs for PwnPlug Lite
+BASE_DIR = r"C:\ProgramData\PwnPlugLite"
+BASELINE_FILE = os.path.join(BASE_DIR, "av_run_baseline.json")
+LOG_FILE = os.path.join(BASE_DIR, "logs", "av_tamper_detector.log")
+
+# --------------------------- LOGGING --------------------------------- #
+
+def setup_logging() -> None:
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    logging.basicConfig(
+        filename=LOG_FILE,
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+    logging.info("=== AV Tamper Detector started ===")
+
+# --------------------------- REGISTRY HELPERS ------------------------ #
+
+def hive_name(hive) -> str:
+    if hive == winreg.HKEY_LOCAL_MACHINE:
+        return "HKLM"
+    if hive == winreg.HKEY_CURRENT_USER:
+        return "HKCU"
+    return str(hive)
+
+def snapshot_autorun_values() -> dict:
+    """
+    Enumerate all values under the configured autorun keys.
+    Returns:
+        dict mapping "HKLM\\...\\Run\\ValueName" -> "value data (stringified)".
+    """
+    snapshot = {}
+
+    for hive, path in AUTORUN_KEYS:
+        try:
+            reg = winreg.ConnectRegistry(None, hive)
+            key = winreg.OpenKey(reg, path)
+        except OSError:
+            continue  # key might not exist
+
+        index = 0
+        while True:
+            try:
+                name, value, _ = winreg.EnumValue(key, index)
+                full_name = f"{hive_name(hive)}\\{path}\\{name}"
+                snapshot[full_name] = str(value)
+                index += 1
+            except OSError:
+                break
+
+    return snapshot
+
+# --------------------------- BASELINE HANDLING ----------------------- #
+
+def load_baseline() -> dict | None:
+    if not os.path.exists(BASELINE_FILE):
+        return None
+    try:
+        with open(BASELINE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logging.error(f"Failed to load baseline: {e}")
+        return None
+
+def save_baseline(snapshot: dict) -> None:
+    os.makedirs(BASE_DIR, exist_ok=True)
+    try:
+        with open(BASELINE_FILE, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, indent=2)
+        logging.info("Baseline saved successfully.")
+    except Exception as e:
+        logging.error(f"Failed to save baseline: {e}")
+
+# --------------------------- ANALYSIS -------------------------------- #
+
+def diff_snapshots(old: dict, new: dict) -> tuple[list, list, list]:
+    """
+    Returns (added, removed, changed) lists of registry entries.
+    Each entry is ("full_name", "old_value", "new_value").
+    """
+    added = []
+    removed = []
+    changed = []
+
+    for key, new_val in new.items():
+        if key not in old:
+            added.append((key, None, new_val))
+        elif old[key] != new_val:
+            changed.append((key, old[key], new_val))
+
+    for key, old_val in old.items():
+        if key not in new:
+            removed.append((key, old_val, None))
+
+    return added, removed, changed
+
+def looks_like_av(entry_name: str, value: str | None) -> bool:
+    s = (entry_name + " " + (value or "")).lower()
+    return any(keyword in s for keyword in AV_KEYWORDS)
+
+# --------------------------- REPORTING ------------------------------- #
+
+def print_and_log(header: str, items: list[tuple[str, str | None, str | None]]) -> None:
+    if not items:
+        return
+    print(f"\n=== {header} ===")
+    logging.info(header)
+    for name, old_val, new_val in items:
+        msg = f"{name} :: OLD={old_val!r} NEW={new_val!r}"
+        print(msg)
+        logging.info(msg)
+
+def run_detection() -> None:
+    setup_logging()
+
+    current = snapshot_autorun_values()
+    baseline = load_baseline()
+
+    if baseline is None:
+        print("[*] No baseline found. Creating initial baseline of autorun entries.")
+        logging.info("No baseline found. Creating initial baseline.")
+        save_baseline(current)
+        print("[+] Baseline created. Run this module again later to detect changes.")
+        return
+
+    added, removed, changed = diff_snapshots(baseline, current)
+
+    av_added    = [e for e in added if looks_like_av(e[0], e[2])]
+    av_removed  = [e for e in removed if looks_like_av(e[0], e[1])]
+    av_changed  = [e for e in changed if looks_like_av(e[0], e[2])]
+
+    print(f"[*] Baseline timestamp: {datetime.fromtimestamp(os.path.getmtime(BASELINE_FILE))}")
+    print(f"[*] Current autorun entries: {len(current)}")
+    print(f"[*] New entries: {len(added)}, Removed: {len(removed)}, Changed: {len(changed)}")
+
+    print_and_log("New AV / security-related autorun entries", av_added)
+    print_and_log("Removed AV / security-related autorun entries (possible tampering!)", av_removed)
+    print_and_log("Modified AV / security-related autorun entries", av_changed)
+
+    if not (av_added or av_removed or av_changed):
+        print("\n[+] No AV-related tampering detected based on current baseline.")
+        logging.info("No AV-related tampering detected.")
+    else:
+        print("\n[!] Potential AV tampering detected. Check log file for details:")
+        print(f"    {LOG_FILE}")
+        logging.warning("Potential AV tampering detected.")
+
+# --------------------------- PWNPLUG LITE HOOK ---------------------- #
+
+def run():
+    """
+    Entry point expected by PwnPlug Lite.
+    """
+    if os.name != "nt":
+        print("[!] This module only runs on Windows (os.name == 'nt').")
+        return
+
+    print(f"=== {MODULE_NAME} v{MODULE_VERSION} ===")
+    print("Category:", MODULE_CATEGORY)
+    run_detection()
+
+if __name__ == "__main__":
+    run()
