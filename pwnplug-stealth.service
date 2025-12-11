@@ -1,0 +1,6 @@
+[Unit]
+Description=PwnPlug Stealth Mode
+[Service]
+ExecStart=/usr/bin/python3 /opt/pwnplug/file_discovery_stealth.py
+[Install]
+WantedBy=multi-user.target

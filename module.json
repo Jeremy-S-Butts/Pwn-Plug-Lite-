@@ -1,0 +1,12 @@
+{
+  "name": "WiFi Sniffer",
+  "id": "wifi_sniffer",
+  "version": "1.0",
+  "entry": "module.sh",
+  "requires_root": true,
+  "dependencies": {
+      "apt": ["aircrack-ng"],
+      "pip": ["scapy"]
+  }
+}
+
