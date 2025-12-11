@@ -1,0 +1,14 @@
+PwnPlug-Modules/
+│
+├── modules/
+│    ├── dns_exfil.pwnmod
+│    ├── wifi_sniffer.pwnmod
+│    ├── creds_dump.pwnmod
+│    └── example.pwnmod
+│
+├── repo.json
+└── README.md
+# PwnPlug Lite – Official Module Repository
+This repository hosts installable `.pwnmod` module packages for the **PwnPlug Lite – JSB CyberOps Edition** framework.
+
+## Structure
