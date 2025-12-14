@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Logon Script Persistence Detector (Windows, Python 3 Compatible)
+Logon Script Persistence Detector (Windows)
 
-- Detects persistence via HKCU\Environment\UserInitMprLogonScript
-- Displays file metadata
-- Optional: use --fix to remove the persistence
-- Optional: use --json for machine-readable output
+- Checks HKCU\Environment\UserInitMprLogonScript
+- Reports status and basic file info
+- (Optional) can clear the value if run with --fix
+
+Intended for defensive use and lab/testing.
 """
 
 import os
@@ -25,22 +26,25 @@ REG_VALUE_NAME = "UserInitMprLogonScript"
 
 
 def query_logon_script():
+    """Return the configured logon script path or None if not set."""
     try:
         reg = winreg.ConnectRegistry(None, REG_HIVE)
         key = winreg.OpenKey(reg, REG_PATH, 0, winreg.KEY_READ)
         value, regtype = winreg.QueryValueEx(key, REG_VALUE_NAME)
         winreg.CloseKey(key)
-        reg.Close()
+        reg.close()
         value = value.strip()
         return value if value else None
     except FileNotFoundError:
+        # key or value does not exist
         return None
     except OSError as e:
-        print("[!] Registry access error: {}".format(e))
+        print(f"[!] Registry access error: {e}")
         return None
 
 
 def get_file_metadata(path):
+    """Return basic metadata for a file path, or None if it doesn't exist."""
     if not path or not os.path.isfile(path):
         return None
 
@@ -54,17 +58,18 @@ def get_file_metadata(path):
 
 
 def clear_logon_script():
+    """Remove the UserInitMprLogonScript registry value."""
     try:
         reg = winreg.ConnectRegistry(None, REG_HIVE)
         key = winreg.OpenKey(reg, REG_PATH, 0, winreg.KEY_SET_VALUE)
         winreg.DeleteValue(key, REG_VALUE_NAME)
         winreg.CloseKey(key)
-        reg.Close()
+        reg.close()
         return True
     except FileNotFoundError:
         return False
     except OSError as e:
-        print("[!] Failed to clear registry value: {}".format(e))
+        print(f"[!] Failed to clear registry value: {e}")
         return False
 
 
@@ -94,15 +99,15 @@ def main():
 
         if not json_out:
             print("[!] Logon script persistence detected!")
-            print("    Registry: HKCU\\{}\\{}".format(REG_PATH, REG_VALUE_NAME))
-            print("    Script path: {}".format(script_path))
+            print(f"    Registry: HKCU\\{REG_PATH}\\{REG_VALUE_NAME}")
+            print(f"    Script path: {script_path}")
 
             if result["file_info"]:
                 info = result["file_info"]
                 print("    File exists: YES")
-                print("    Size       : {} bytes".format(info['size_bytes']))
-                print("    Created    : {}".format(info['created']))
-                print("    Modified   : {}".format(info['modified']))
+                print(f"    Size       : {info['size_bytes']} bytes")
+                print(f"    Created    : {info['created']}")
+                print(f"    Modified   : {info['modified']}")
             else:
                 print("    File exists: NO (or not a regular file)")
 
@@ -117,9 +122,9 @@ def main():
                     print("[+] Registry value cleared.")
                     result["action_taken"] = "cleared"
                 else:
-                    print("[!] Failed to clear registry value.")
                     result["action_taken"] = "clear_failed"
         else:
+            # JSON mode: just attempt
             result["action_taken"] = "cleared" if clear_logon_script() else "clear_failed"
 
     if json_out:
@@ -128,3 +133,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
