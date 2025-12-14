@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+SCHEDULER="$HOME/pwnplug_scheduler.py"
+
+scheduler_menu() {
+    while true; do
+        clear
+        echo "====== PwnPlug Lite Scheduler ======"
+        echo "1) Enable scheduler"
+        echo "2) Disable scheduler"
+        echo "3) Show scheduler status"
+        echo "4) Back to main menu"
+        echo "===================================="
+        read -rp "Choose an option: " choice
+
+        case "$choice" in
+            1)
+                "$SCHEDULER" --enable
+                read -rp "Press Enter to continue..." ;;
+            2)
+                "$SCHEDULER" --disable
+                read -rp "Press Enter to continue..." ;;
+            3)
+                "$SCHEDULER" --status
+                read -rp "Press Enter to continue..." ;;
+            4)  break ;;
+            *)  echo "Invalid choice"; sleep 1 ;;
+        esac
+    done
+}
