@@ -1,0 +1,11 @@
+#!/bin/bash
+MODULE="Anti-Tamper Decoy"
+SERVICE="pwnplug-antitamper"
+
+echo "[*] $MODULE status:"
+systemctl is-active --quiet $SERVICE && \
+    echo "    RUNNING" || echo "    STOPPED"
+
+echo "[*] Recent events:"
+journalctl -u $SERVICE -n 5 --no-pager
+

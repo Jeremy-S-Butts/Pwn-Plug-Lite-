@@ -1,0 +1,154 @@
+#!/bin/bash
+
+# ==========================================
+#   PwnPlug Lite – Advanced Build Pipeline
+# ==========================================
+
+set -e
+
+SCRIPT_PATH="/home/kali/Downloads/file_discovery_threaded.py"
+APP_NAME="pwnplug-threaded"
+VERSION="1.0"
+ARCH="amd64"
+
+BUILD_DIR="build_artifacts"
+DEB_DIR="${BUILD_DIR}/deb_pkg"
+BINARY_DEST="/usr/bin/${APP_NAME}"
+SYSTEMD_DIR="${DEB_DIR}/data/lib/systemd/system"
+OPT_DIR="${DEB_DIR}/data/opt/pwnplug"
+LOG_DIR="${DEB_DIR}/data/var/log/pwnplug"
+CONTROL_DIR="${DEB_DIR}/control"
+
+echo ""
+echo "[+] Starting Advanced Build Pipeline..."
+echo ""
+
+# ------------------------------------------
+# STEP 1 — Clean previous build output
+# ------------------------------------------
+echo "[*] Cleaning build directories..."
+rm -rf build dist __pycache__ "${BUILD_DIR}" 2>/dev/null || true
+mkdir -p "${BUILD_DIR}"
+
+# ------------------------------------------
+# STEP 2 — Build binary with PyInstaller
+# ------------------------------------------
+echo "[*] Running PyInstaller..."
+pyinstaller --onefile --noconsole --clean --name "${APP_NAME}" "${SCRIPT_PATH}"
+
+if [ ! -f "dist/${APP_NAME}" ]; then
+    echo "[ERROR] PyInstaller failed! Exiting."
+    exit 1
+fi
+
+echo "[+] PyInstaller build OK."
+
+# ------------------------------------------
+# STEP 3 — UPX compression (if installed)
+# ------------------------------------------
+if command -v upx >/dev/null 2>&1; then
+    echo "[*] Compressing with UPX..."
+    upx dist/${APP_NAME}
+else
+    echo "[!] UPX not installed — skipping compression."
+fi
+
+# ------------------------------------------
+# STEP 4 — Install binary to system path
+# ------------------------------------------
+echo "[*] Installing binary to /usr/bin..."
+sudo mv "dist/${APP_NAME}" "${BINARY_DEST}"
+sudo chmod +x "${BINARY_DEST}"
+
+# ------------------------------------------
+# STEP 5 — Build .deb directory structure
+# ------------------------------------------
+echo "[*] Building .deb package layout..."
+
+mkdir -p "${DEB_DIR}/DEBIAN"
+mkdir -p "${SYSTEMD_DIR}"
+mkdir -p "${OPT_DIR}"
+mkdir -p "${LOG_DIR}"
+
+# Copy binary into package data
+cp "${BINARY_DEST}" "${OPT_DIR}/${APP_NAME}"
+
+# Create systemd service
+cat <<EOF > "${SYSTEMD_DIR}/${APP_NAME}.service"
+[Unit]
+Description=PwnPlug Threaded File Discovery Scanner
+
+[Service]
+ExecStart=/usr/bin/${APP_NAME}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Create log directory
+touch "${LOG_DIR}/threaded.log"
+
+# ------------------------------------------
+# STEP 6 — Create DEBIAN/control
+# ------------------------------------------
+cat <<EOF > "${DEB_DIR}/DEBIAN/control"
+Package: pwnplug-threaded
+Version: ${VERSION}
+Architecture: ${ARCH}
+Maintainer: CyberGeekJSB
+Section: utils
+Priority: optional
+Description: PwnPlug Lite Threaded File Discovery Engine
+EOF
+
+# ------------------------------------------
+# STEP 7 — Post-install script
+# ------------------------------------------
+cat <<EOF > "${DEB_DIR}/DEBIAN/postinst"
+#!/bin/bash
+systemctl daemon-reload
+systemctl enable ${APP_NAME}.service || true
+EOF
+chmod 755 "${DEB_DIR}/DEBIAN/postinst"
+
+# ------------------------------------------
+# STEP 8 — Build the .deb package
+# ------------------------------------------
+echo "[*] Building .deb package now..."
+dpkg-deb --build "${DEB_DIR}" "${BUILD_DIR}/pwnplug-threaded_${VERSION}_${ARCH}.deb"
+
+echo "[+] .deb package created:"
+echo "    ${BUILD_DIR}/pwnplug-threaded_${VERSION}_${ARCH}.deb"
+
+# ------------------------------------------
+# STEP 9 — Create GitHub release bundle
+# ------------------------------------------
+RELEASE_DIR="${BUILD_DIR}/release_${VERSION}"
+mkdir -p "${RELEASE_DIR}"
+
+cp "${BUILD_DIR}/pwnplug-threaded_${VERSION}_${ARCH}.deb" "${RELEASE_DIR}/"
+cp "${BINARY_DEST}" "${RELEASE_DIR}/"
+cp "${SCRIPT_PATH}" "${RELEASE_DIR}/source_code.py"
+
+# Generate SHA256 checksums
+cd "${RELEASE_DIR}"
+sha256sum * > CHECKSUMS.txt
+cd -
+
+echo "[+] GitHub release bundle prepared."
+
+# ------------------------------------------
+# DONE
+# ------------------------------------------
+echo ""
+echo "============================================="
+echo " ADVANCED BUILD PIPELINE COMPLETE"
+echo "============================================="
+echo "Binary installed at: ${BINARY_DEST}"
+echo "DEB package: ${BUILD_DIR}/pwnplug-threaded_${VERSION}_${ARCH}.deb"
+echo "GitHub release folder: ${RELEASE_DIR}"
+echo "SHA256 checksum file created."
+echo ""
+echo "Run service with:"
+echo "   sudo systemctl start ${APP_NAME}.service"
+echo ""
