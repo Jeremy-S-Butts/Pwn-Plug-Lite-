@@ -1,7 +1,0 @@
-#!/bin/bash
-# PwnPlug Lite – ICMP Covert Channel
-# Requires root (Scapy raw sockets)
-
-MODULE_DIR="$(dirname "$(realpath "$0")")"
-
-python3 "$MODULE_DIR/icmp_client.py"
